@@ -1,0 +1,28 @@
+{
+  "name": "sm",
+  "version": "1.0.0",
+  "description": "This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy:ep": "npx hardhat run scripts/deployEP.js",
+    "deploy:ex": "npx hardhat run scripts/execute.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@account-abstraction/contracts": "^0.6.0",
+    "@ethersproject/address": "^5.8.0",
+    "@nomicfoundation/hardhat-ethers": "^3.0.9",
+    "@openzeppelin/contracts": "^4.9.6",
+    "dotenv": "^16.5.0",
+    "ethers": "^6.14.4",
+    "web3": "^4.16.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.25.0"
+  }
+}
