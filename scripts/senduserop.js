@@ -1,116 +1,97 @@
 const hre = require("hardhat");
-const { ethers } = hre;
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
-
-const { 
-  eoaPublicKey, 
-  eoaPrivateKey, 
-  simpleAccountAddress, 
-  entryPointAddress, 
-  tokenAddress, 
-  accountFactoryAddress, 
-  paymasterAddress 
-} = require('../addressConfig');
+const { priorityFeePerGas } = require('./helpers/gasEstimator');
+const { eoaPublicKey, 
+        eoaPrivateKey, 
+        simpleAccountAddress, 
+        entryPointAddress, 
+        tokenAddress, 
+        accountFactoryAddress, 
+        paymasterAddress } = require('../addressConfig');
 
 async function main() {
-  if (!process.env.INFURA_KEY) throw new Error("Missing INFURA_KEY in .env file!");
+    const ethers = hre.ethers;
+    const wallet = new ethers.Wallet(eoaPrivateKey);
+    const signer = wallet.connect(hre.ethers.provider);
 
-  const provider = new hre.ethers.JsonRpcProvider(`https://sepolia.infura.io/v3/${process.env.INFURA_KEY}`);
-  const wallet = new hre.ethers.Wallet(eoaPrivateKey, provider);
+    const AccountFactory = await hre.ethers.getContractAt("AccountFactory", accountFactoryAddress, signer);
+    const entryPoint = await hre.ethers.getContractAt("EntryPoint", entryPointAddress, signer);
+    const simpleAccount = await hre.ethers.getContractAt("SimpleAccount", simpleAccountAddress, signer);
+    const Token = await hre.ethers.getContractAt("Token", tokenAddress, signer);
 
-  // Contract instances
-  const entryPoint = await hre.ethers.getContractAt("EntryPoint", entryPointAddress, wallet);
-  const simpleAccount = await hre.ethers.getContractAt("SimpleAccount", simpleAccountAddress, wallet);
-  const accountFactory = await hre.ethers.getContractAt("AccountFactory", accountFactoryAddress, wallet);
-  const tokenContract = await hre.ethers.getContractAt("Token", tokenAddress, wallet);
+    const balanceWei = await hre.ethers.provider.getBalance(signer.address);
+    console.log(`The balance of the signer is: ${balanceWei} Wei`);
 
-  // Show EOA's ETH balance
-  const balanceWei = await provider.getBalance(wallet.address);
-  console.log(`Signer ETH balance: ${balanceWei} Wei`);
-
-  // Check if SimpleAccount is deployed
-  const code = await provider.getCode(simpleAccountAddress);
-  let initCode;
-  if (code === '0x') {
-    initCode = accountFactoryAddress + accountFactory.interface.encodeFunctionData('createAccount', [eoaPublicKey, 0]).slice(2);
-    console.log(`SimpleAccount is not yet deployed. Will use initCode: ${initCode}`);
-  } else {
-    initCode = '0x';
-    console.log(`SimpleAccount is already deployed.`);
-  }
-
-  // Approve calldata
-  const spender = "0xd2Db07eC45D7E83D4Cc4C4da7e528C4374D64029";
-  const amount = ethers.parseUnits("10", 18);
-  const funcTargetData = tokenContract.interface.encodeFunctionData('approve', [spender, amount]);
-  const data = simpleAccount.interface.encodeFunctionData('execute', [tokenAddress, 0, funcTargetData]);
-  console.log(`Encoded callData: ${data}`);
-
-  // Read userOp config from file
-  const userOpPath = path.join(__dirname, '..', 'GA', 'GA','userOp.json');
-  const userOpData = JSON.parse(fs.readFileSync(userOpPath, 'utf8'));
-
-  // Build userOp object
-  const nonce = await entryPoint.getNonce(simpleAccountAddress, 0);
-
-
-
-
-  const userOp = {
-    sender: simpleAccountAddress,
-    nonce,
-    initCode,
-    callData: data,
-    callGasLimit: ethers.toBigInt(userOpData.callGasLimit),
-    verificationGasLimit: ethers.toBigInt(userOpData.verificationGasLimit),
-    preVerificationGas: ethers.toBigInt(userOpData.preVerificationGas),
-    maxFeePerGas: ethers.parseUnits(userOpData.maxFeePerGas.toString(), "gwei"),
-    maxPriorityFeePerGas: ethers.parseUnits(userOpData.maxPriorityFeePerGas.toString(), "gwei"),
-    paymasterAndData: paymasterAddress,
-    signature: '0x'
-  };
-  console.log('UserOp (pre-sign):', userOp);
-
-  // Sign userOp
-  const hash = await entryPoint.getUserOpHash(userOp);
-  userOp.signature = await wallet.signMessage(ethers.getBytes(hash));
-  console.log('Signed signature:', userOp.signature);
-
-  // Encode handleOps data
-  const encodedData = entryPoint.interface.encodeFunctionData("handleOps", [[userOp], eoaPublicKey]);
-  console.log('Encoded handleOps data:', encodedData);
-
-  // Estimate gas
-  let gasLimit = 2000000;
-  try {
-    const gasEstimate = await entryPoint.estimateGas.handleOps([userOp], eoaPublicKey);
-    gasLimit = Math.floor(Number(gasEstimate) * 1.2);
-    console.log(`Estimated gas limit: ${gasLimit}`);
-  } catch (gasError) {
-    console.warn('Gas estimation failed, using default gasLimit:', gasLimit);
-  }
-
-  // Send tx
-  try {
-    const tx = await wallet.sendTransaction({
-      to: entryPointAddress,
-      data: encodedData,
-      gasLimit: gasLimit
-    });
-    const receipt = await tx.wait();
-    console.log('Transaction successful! Hash:', receipt.transactionHash);
-    console.log(`View on Sepolia Etherscan: https://sepolia.etherscan.io/tx/${receipt.transactionHash}`);
-  } catch (error) {
-    console.error('Error sending transaction:', error);
-    if (error.revert) {
-      console.error('Revert reason:', error.revert);
+    // Deposit to EntryPoint if needed, using available balance
+    
+    const deposit = await entryPoint.balanceOf(simpleAccountAddress);
+    if (deposit === 0n) {
+        const depositAmount = ethers.parseEther("0.004"); // Reduced to 0.004 ETH
+        const tx = await entryPoint.depositTo(simpleAccountAddress, { value: depositAmount });
+        await tx.wait();
+        console.log("Deposited 0.004 ETH to EntryPoint for SimpleAccount");
     }
-  }
+
+    // Check and transfer ownership if needed
+    const currentOwner = await Token.owner();
+    if (currentOwner.toLowerCase() !== simpleAccountAddress.toLowerCase()) {
+        if (currentOwner.toLowerCase() !== wallet.address.toLowerCase()) {
+            console.warn(`Warning: Signer ${wallet.address} is not Token owner (${currentOwner}). Ownership transfer skipped. Mint may fail.`);
+        } else {
+            console.log(`Transferring ownership from ${currentOwner} to ${simpleAccountAddress}`);
+            const tx = await Token.transferOwnership(simpleAccountAddress);
+            await tx.wait();
+            console.log("Ownership transferred successfully");
+        }
+    }
+
+    const mintAmount = ethers.parseUnits("100", 18);
+    const receiver = simpleAccountAddress;
+    const funcTargetData = Token.interface.encodeFunctionData('safeMint', [receiver, mintAmount]);
+
+    const data = simpleAccount.interface.encodeFunctionData('execute', [tokenAddress, 0, funcTargetData]);
+
+    let initCode = accountFactoryAddress + AccountFactory.interface.encodeFunctionData('createAccount', [eoaPublicKey, 0]).slice(2);
+
+    const code = await hre.ethers.provider.getCode(simpleAccountAddress);
+
+    if (code !== '0x') {
+        initCode = '0x'
+    }
+
+    console.log('maxPriorityFeePerGas:', await priorityFeePerGas());
+
+// Make sure all gas parameters are BigInt, and convert Gwei (float from JSON) to Wei
+const userOp = {
+  sender: simpleAccountAddress,
+  nonce: await entryPoint.getNonce(simpleAccountAddress, 0),
+  initCode: initCode,
+  callData: data,
+  callGasLimit: '100000',
+  verificationGasLimit: '1000000',
+  preVerificationGas: '0x129eb',
+  maxFeePerGas: '0x6333efe',
+  maxPriorityFeePerGas: await priorityFeePerGas(),
+  paymasterAndData: '0x',
+  signature: '0x'
+
+};
+
+    const hash = await entryPoint.getUserOpHash(userOp);
+
+    userOp.signature = await signer.signMessage(hre.ethers.getBytes(hash));
+
+    try {
+        const tx = await entryPoint.handleOps([userOp], eoaPublicKey, {
+            gasLimit: 2000000
+        });
+        const receipt = await tx.wait();
+        console.log('Transaction successful:', receipt);
+    } catch (error) {
+        console.error('Error sending transaction:', error);
+    }
 }
 
 main().catch((error) => {
-  console.error('Main function error:', error);
-  process.exitCode = 1;
+    console.error(error);
+    process.exitCode = 1;
 });

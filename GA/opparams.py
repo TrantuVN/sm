@@ -9,28 +9,31 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def run_simulation(params):
     callGas, verGas, preGas, maxFee, priorityFee = params
 
+    # Convert parameters to hexadecimal (Wei)
     userOp = {
         "callGasLimit": int(callGas),
         "verificationGasLimit": int(verGas),
-        "preVerificationGas": int(preGas),
-        "maxFeePerGas": float(f"{maxFee:.9f}"),  
-        "maxPriorityFeePerGas": float(f"{priorityFee:.9f}"),
-        "bundleSize": 1,
-        "callData": "0xb61d27f60000000000000000000000008d68da902c9d80fb39d89d509c25a1c0241489d3000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000d2db07ec45d7e83d4cc4c4da7e528c4374d640290000000000000000000000000000000000000000000000008ac7230489e8000000000000000000000000000000000000000000000000000000000000"
+        "preVerificationGas": '0x' + format(int(preGas), 'x'),  # Decimal to hex
+        "maxFeePerGas": '0x' + format(int(maxFee * 1e9), 'x'),  # Gwei to Wei, then hex
+        "maxPriorityFeePerGas": '0x' + format(int(priorityFee * 1e9), 'x'),  # Gwei to Wei, then hex
+        "bundleSize": 1
     }
 
+    # Ensure output directory exists
     os.makedirs("GA", exist_ok=True)
     with open(os.path.join("GA", "userOp.json"), "w") as f:
         json.dump(userOp, f, ensure_ascii=False, indent=2)
 
     try:
-        # Kiểm tra tính hợp lệ
+        # Validate parameters
         isValid = (
             callGas >= 10000 and
             verGas >= 10000 and
             preGas >= 21000 and
             maxFee >= priorityFee and
-            maxFee >= 0.1
+            maxFee >= 0.1 and
+            priorityFee >= 0.01 and
+            (callGas + verGas + preGas) * maxFee / 1e9 < 0.0005  # Ensure cost < 0.0005 ETH
         )
 
         if not isValid:
@@ -38,7 +41,7 @@ def run_simulation(params):
             logging.warning(f"Invalid parameters: {params}")
             cost = 1e6
         else:
-            # Mô phỏng tổng gas
+            # Simulate total gas cost
             dummy_gas = callGas + verGas + preGas + 10000
             gas_result = {"gas": dummy_gas}
             cost = dummy_gas * (maxFee + priorityFee) / 1e9  # ETH
@@ -60,9 +63,8 @@ varbound = np.array([
     [20000, 50000],    # callGasLimit
     [20000, 40000],    # verificationGasLimit
     [21000, 100000],   # preVerificationGas
-    [1.0, 10.0],       # maxFeePerGas (Gwei)
-    [0.1, 5.0],        # maxPriorityFeePerGas (Gwei)
-
+    [0.1, 2.0],        # maxFeePerGas (Gwei)
+    [0.01, 1.0],       # maxPriorityFeePerGas (Gwei)
 ])
 
 algorithm_param = {

@@ -22,6 +22,7 @@ async function main() {
     console.log(`The balance of the signer is: ${balanceWei} Wei`);
 
     // Deposit to EntryPoint if needed, using available balance
+    
     const deposit = await entryPoint.balanceOf(simpleAccountAddress);
     if (deposit === 0n) {
         const depositAmount = ethers.parseEther("0.004"); // Reduced to 0.004 ETH
