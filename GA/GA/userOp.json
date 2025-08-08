@@ -1,8 +1,0 @@
-{
-  "callGasLimit": 20033,
-  "verificationGasLimit": 20005,
-  "preVerificationGas": "0x129eb",
-  "maxFeePerGas": "0x6333efe",
-  "maxPriorityFeePerGas": "0x31c702f6",
-  "bundleSize": 1
-}

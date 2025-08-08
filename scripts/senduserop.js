@@ -12,7 +12,6 @@ async function main() {
     const ethers = hre.ethers;
     const wallet = new ethers.Wallet(eoaPrivateKey);
     const signer = wallet.connect(hre.ethers.provider);
-
     const AccountFactory = await hre.ethers.getContractAt("AccountFactory", accountFactoryAddress, signer);
     const entryPoint = await hre.ethers.getContractAt("EntryPoint", entryPointAddress, signer);
     const simpleAccount = await hre.ethers.getContractAt("SimpleAccount", simpleAccountAddress, signer);
@@ -66,14 +65,13 @@ const userOp = {
   nonce: await entryPoint.getNonce(simpleAccountAddress, 0),
   initCode: initCode,
   callData: data,
-  callGasLimit: '100000',
-  verificationGasLimit: '1000000',
-  preVerificationGas: '0x129eb',
-  maxFeePerGas: '0x6333efe',
+  callGasLimit: '21054',
+  verificationGasLimit: '20027',
+  preVerificationGas: '0x528b',
+  maxFeePerGas: '0x2181af1c',
   maxPriorityFeePerGas: await priorityFeePerGas(),
   paymasterAndData: '0x',
   signature: '0x'
-
 };
 
     const hash = await entryPoint.getUserOpHash(userOp);

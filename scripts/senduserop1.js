@@ -67,8 +67,8 @@ async function main() {
         callData: data,
         callGasLimit: '100000',
         verificationGasLimit: '1000000',
-        preVerificationGas: '0x10edc8',
-        maxFeePerGas: '0x0973e0',
+        preVerificationGas: '0x129eb',
+        maxFeePerGas: '0x6333efe',
         maxPriorityFeePerGas: await priorityFeePerGas(),
         paymasterAndData: '0x',  // Disable paymaster
         signature: '0x'
